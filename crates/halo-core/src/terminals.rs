@@ -872,13 +872,13 @@ mod tests {
 
 	#[test]
 	fn a_server_it_starts_shows_its_port_and_dies_with_it() {
-		// Python's first start on a fresh machine (CI) can take many seconds; that's not what's tested.
-		let _ = Command::new("python3").args(["-c", "import http.server"]).output();
+		// A bare listener: http.server looks its host name up before it listens, which can hang on CI.
+		let serve = |port: u16| format!("python3 -c \"import socket,time; s=socket.socket(); s.bind(('127.0.0.1',{port})); s.listen(); print('listening'); time.sleep(600)\"\n");
 		let (t, _rx, dir) = terminals("/bin/zsh");
 		let s = t.open(Some(&workspace(dir.path())), 80, 24).unwrap();
 		std::thread::sleep(Duration::from_millis(600));
 		let port = 47000 + (std::process::id() % 900) as u16;
-		t.write(&s.id, format!("python3 -m http.server {port} --bind 127.0.0.1\n").as_bytes()).unwrap();
+		t.write(&s.id, serve(port).as_bytes()).unwrap();
 		wait_port(&t, &s.id, "the port to show", 30, || t.get(&s.id).unwrap().ports.contains(&port));
 		assert_eq!(t.get(&s.id).unwrap().status, TermStatus::Running);
 		assert!(t.context().contains(&format!(":{port}")), "{}", t.context());
@@ -889,7 +889,7 @@ mod tests {
 		});
 		let s2 = t.open(None, 80, 24).unwrap();
 		std::thread::sleep(Duration::from_millis(600));
-		t.write(&s2.id, format!("python3 -m http.server {} --bind 127.0.0.1\n", port + 1).as_bytes()).unwrap();
+		t.write(&s2.id, serve(port + 1).as_bytes()).unwrap();
 		wait_port(&t, &s2.id, "the second port", 30, || t.get(&s2.id).unwrap().ports.contains(&(port + 1)));
 		t.close(&s2.id).unwrap();
 		wait("closing to stop its server", 10, || std::net::TcpStream::connect(("127.0.0.1", port + 1)).is_err());
