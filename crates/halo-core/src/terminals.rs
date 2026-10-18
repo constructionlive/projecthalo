@@ -734,6 +734,18 @@ mod tests {
 		}
 	}
 
+	/// `wait`, saying what the terminal showed and what was listening when it times out.
+	fn wait_port(t: &Terminals, id: &str, what: &str, secs: u64, f: impl Fn() -> bool) {
+		let start = Instant::now();
+		while !f() {
+			if start.elapsed() > Duration::from_secs(secs) {
+				let screen = t.read(id, 20).unwrap_or_default().replace('\n', " ⏎ ");
+				panic!("timed out waiting for {what}; screen: {screen}; listening: {:?}; ports: {:?}", listening_ports(), t.get(id).map(|s| s.ports));
+			}
+			std::thread::sleep(Duration::from_millis(20));
+		}
+	}
+
 	fn workspace(dir: &Path) -> Workspace {
 		Workspace { id: "w1".into(), name: "repo".into(), path: std::fs::canonicalize(dir).unwrap(), arena: "bay".into(), created: 0, last_used: 0 }
 	}
@@ -865,7 +877,7 @@ mod tests {
 		std::thread::sleep(Duration::from_millis(600));
 		let port = 47000 + (std::process::id() % 900) as u16;
 		t.write(&s.id, format!("python3 -m http.server {port} --bind 127.0.0.1\n").as_bytes()).unwrap();
-		wait("the port to show", 15, || t.get(&s.id).unwrap().ports.contains(&port));
+		wait_port(&t, &s.id, "the port to show", 15, || t.get(&s.id).unwrap().ports.contains(&port));
 		assert_eq!(t.get(&s.id).unwrap().status, TermStatus::Running);
 		assert!(t.context().contains(&format!(":{port}")), "{}", t.context());
 		t.write(&s.id, b"\x03").unwrap();
@@ -876,7 +888,7 @@ mod tests {
 		let s2 = t.open(None, 80, 24).unwrap();
 		std::thread::sleep(Duration::from_millis(600));
 		t.write(&s2.id, format!("python3 -m http.server {} --bind 127.0.0.1\n", port + 1).as_bytes()).unwrap();
-		wait("the second port", 15, || t.get(&s2.id).unwrap().ports.contains(&(port + 1)));
+		wait_port(&t, &s2.id, "the second port", 15, || t.get(&s2.id).unwrap().ports.contains(&(port + 1)));
 		t.close(&s2.id).unwrap();
 		wait("closing to stop its server", 10, || std::net::TcpStream::connect(("127.0.0.1", port + 1)).is_err());
 	}
