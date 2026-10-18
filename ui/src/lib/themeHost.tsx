@@ -82,7 +82,10 @@ export function ThemeFrame({ theme, onTrouble, title }: Props) {
   const [started, setStarted] = useState(false);
   const base = themeBase(theme.id);
   const doc = useMemo(() => (base ? frameDoc(base, theme.version) : ''), [base, theme.version]);
-  const allowed = useMemo(() => new Set(theme.permissions), [theme.permissions]);
+  // By content: every theme event brings a new permissions array, and re-running the bridge
+  // without reloading the frame would drop its subscriptions (it never asks again).
+  const perms = theme.permissions.join('\n');
+  const allowed = useMemo(() => new Set(perms.split('\n').filter(Boolean)), [perms]);
   // The latest callback, without resubscribing the bridge when the parent re-renders.
   const troubled = useRef(onTrouble);
   troubled.current = onTrouble;

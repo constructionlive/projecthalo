@@ -2,9 +2,13 @@
 // e2e/run.mjs installs it to check the frame keeps a theme in.
 
 import { api } from '@halo/ui/lib/api';
+import type { ThemeProps } from '@halo/ui/kit/theme';
 import { useEffect } from 'react';
 
-export default function Theme() {
+export default function Theme({ halo }: ThemeProps) {
+  // Every workspace count it's shown: the test checks live updates keep arriving.
+  const workspaces = halo.state.workspaces.length;
+  useEffect(() => window.parent.postMessage({ halo: 1, t: 'probe-ws', n: workspaces }, '*'), [workspaces]);
   useEffect(() => {
     const r: Record<string, string> = {};
     const t = async (k: string, f: () => unknown) => {

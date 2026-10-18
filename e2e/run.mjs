@@ -448,6 +448,24 @@ const scenarios = [
     for (const k of ['ownBuild', 'readState']) assert(r[k]?.startsWith('allowed'), `${k} should work: ${r[k]}`);
     assert(/terminals/.test(r.openTerminal), `the refusal says which permission: ${r.openTerminal}`);
 
+    // A theme event that leaves the build as it is (here a failed build) must not cut the theme off
+    // from Halo: it keeps hearing what happens, and nothing says it failed to start.
+    await sky.run(() => { window.__ws = []; window.addEventListener('message', (e) => e.data?.t === 'probe-ws' && window.__ws.push(e.data.n)); });
+    const src = join(probe.dir, 'src/index.tsx');
+    const good = readFileSync(src, 'utf8');
+    writeFileSync(src, `${good}\nthis is not typescript(`);
+    await waitFor('the failed build to be reported', async () => !!(await state()).themes.find((t) => t.id === probe.id)?.error, 15_000);
+    await sleep(800);
+    const before = (await state()).workspaces.length;
+    const scratch = mkdtempSync(join(tmpdir(), 'halo-probe-ws-'));
+    const opened = await post('/workspace-open', { path: scratch });
+    await waitFor('the theme to hear of the new workspace', () => sky.run((n) => (window.__ws ?? []).includes(n), before + 1), 5_000);
+    await sleep(10_500);
+    assert(!(await sky.run(() => document.querySelector('.theme-trouble')?.textContent ?? null)), 'a working theme was reported as not starting');
+    await post('/workspace-close', { id: opened.id });
+    writeFileSync(src, good);
+    note('after a failed build the theme still hears every change, and no false alarm');
+
     await post('/theme-delete', { id: th.id });
     await post('/theme-delete', { id: probe.id });
     await sky.run(() => localStorage.setItem('halo-theme', 'galaxy'));

@@ -36,4 +36,4 @@ jobs:
       - name: Engine tests
         run: |
           cargo test -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
-          [ "$status" = 0 ] || { grep -E "panicked|FAILED|error(\[|:)" test.log | head -20 | sed 's/^/::error::/'; exit 1; }
+          [ "$status" = 0 ] || { grep -E -A1 "panicked|FAILED|error(\[|:)" test.log | grep -v "^--$" | head -30 | sed 's/^/::error::/'; exit 1; }

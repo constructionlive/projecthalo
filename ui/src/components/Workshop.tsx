@@ -224,8 +224,8 @@ export function Workshop({ halo, current, onUse, onClose }: Props) {
                       className="btn signal"
                       onClick={async () => {
                         await run(() => api.themeDelete(mine.id));
-                        if (current === `custom:${mine.id}`) onUse('galaxy');
-                        setPicked('galaxy');
+                        if (current === `custom:${mine.id}`) onUse('roadster');
+                        setPicked('roadster');
                       }}
                     >
                       Delete

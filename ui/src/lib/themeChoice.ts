@@ -12,7 +12,7 @@ export function savedTheme(): ThemeKey {
   } catch {
     /* fall through */
   }
-  return 'galaxy';
+  return 'roadster';
 }
 
 export function saveTheme(t: ThemeKey) {

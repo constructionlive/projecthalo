@@ -40,7 +40,7 @@ export function Host() {
 
   const custom = theme.startsWith('custom:') ? halo.state.themes.find((t) => `custom:${t.id}` === theme) : undefined;
   // A theme that's gone (deleted, or not loaded yet in a fresh window) shows the Galaxy meanwhile.
-  const shown: ThemeKey = theme.startsWith('custom:') && !custom ? 'galaxy' : theme;
+  const shown: ThemeKey = theme.startsWith('custom:') && !custom ? 'roadster' : theme;
 
   const switcher = (
     <div role="radiogroup" aria-label="Theme" className="theme-switch">
