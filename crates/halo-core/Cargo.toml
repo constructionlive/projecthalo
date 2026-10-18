@@ -1,0 +1,20 @@
+[package]
+name = "halo-core"
+description = "Halo's engine: one main thread that never blocks, stars (background agents) that wake it, and the log that remembers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cc-agent.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+dirs.workspace = true
+log.workspace = true
+portable-pty = "0.9"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

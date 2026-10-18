@@ -1,0 +1,15 @@
+[package]
+name = "cc-agent"
+description = "Halo's agent: model loop, Claude Code / Codex / OpenCode channels, and its tools over MCP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+dirs.workspace = true
+log.workspace = true
+reqwest.workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "voice-core"
+description = "Local speech-to-text pipeline: audio sources, VAD segmentation, swappable STT engines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+dirs.workspace = true
+thiserror = "2"
+log = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+earshot = "1.2.2"
+handy-recorder = "0.1"
+hound = "3.5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = "11"
+transcribe-cpp = { version = "0.4.0", default-features = false, features = ["serde", "metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+transcribe-cpp = { version = "0.4.0", default-features = false, features = ["serde"] }
+
+[dev-dependencies]

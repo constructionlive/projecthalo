@@ -1,0 +1,6 @@
+{
+  "name": "New theme",
+  "description": "",
+  "kit": 1,
+  "permissions": ["read", "ask", "agents"]
+}

@@ -1,0 +1,4 @@
+# Matches Takeoff Desk's house style: tabs, long lines.
+hard_tabs = true
+max_width = 250
+use_small_heuristics = "Max"

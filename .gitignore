@@ -1,0 +1,11 @@
+target/
+dist/
+node_modules/
+ui/dist/
+e2e/shots/
+e2e/*.log
+.claude/
+.DS_Store
+.orkey
+crates/halo-app/kit/
+.halo-dev.env
