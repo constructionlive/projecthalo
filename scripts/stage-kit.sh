@@ -50,10 +50,9 @@ if [ "$("$OUT/bin/esbuild" --version 2>/dev/null || true)" != "$ESBUILD_VERSION"
 	chmod +x "$OUT/bin/esbuild"
 	rm -rf "$TMP"
 fi
-# Apple notarizes an app only if every executable in it carries the app's signature.
-if [ -n "${APPLE_SIGNING_IDENTITY:-}" ] && [ "$APPLE_SIGNING_IDENTITY" != "-" ]; then
-	codesign --force --options runtime --timestamp=none -s "$APPLE_SIGNING_IDENTITY" "$OUT/bin/esbuild" 2>/dev/null \
-		|| codesign --force --options runtime -s "$APPLE_SIGNING_IDENTITY" "$OUT/bin/esbuild"
-	[ "${NOTARIZE:-0}" = "1" ] && codesign --force --options runtime --timestamp -s "$APPLE_SIGNING_IDENTITY" "$OUT/bin/esbuild"
+# Apple notarizes an app only if every executable in it carries the app's signature
+# (releases only: everyday builds run the kit's esbuild as it comes).
+if [ "${NOTARIZE:-0}" = "1" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+	codesign --force --options runtime --timestamp -s "$APPLE_SIGNING_IDENTITY" "$OUT/bin/esbuild"
 fi
 echo "kit staged: $(du -sh "$OUT" | cut -f1), esbuild $("$OUT/bin/esbuild" --version)"
