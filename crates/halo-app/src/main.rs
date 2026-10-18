@@ -555,7 +555,7 @@ fn list_star_files(root: &Path, id: &str) -> Result<Vec<StarFile>, String> {
 	let dir = star_dir(root, id)?;
 	let mut out = Vec::new();
 	collect_files(&dir, &dir, 0, &mut out);
-	out.sort_by(|a, b| b.modified.cmp(&a.modified));
+	out.sort_by_key(|f| std::cmp::Reverse(f.modified));
 	Ok(out)
 }
 

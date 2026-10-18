@@ -39,7 +39,7 @@ impl SCStreamOutputTrait for AudioHandler {
 		let Ok(buffers) = sample.audio_buffer_list() else { return };
 		// Mono float32 at 16 kHz, as configured: one buffer.
 		let Some(buffer) = (&buffers).into_iter().next() else { return };
-		let samples: Vec<f32> = buffer.data().chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+		let samples: Vec<f32> = buffer.data().as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
 		if samples.is_empty() {
 			return;
 		}

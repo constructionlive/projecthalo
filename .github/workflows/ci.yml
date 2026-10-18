@@ -9,12 +9,12 @@ jobs:
   check:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -23,11 +23,11 @@ jobs:
         run: cd ui && npm ci
       - name: Theme kit
         run: scripts/stage-kit.sh
+      - name: UI types and build (the app embeds it)
+        run: cd ui && npx tsc --noEmit -p . && npx vite build
       - name: Format
         run: cargo fmt --all --check
       - name: Lints
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Engine tests
         run: cargo test -p halo-core -p cc-agent
-      - name: UI types and build
-        run: cd ui && npx tsc --noEmit -p . && npx vite build

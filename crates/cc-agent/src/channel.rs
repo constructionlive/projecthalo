@@ -1304,11 +1304,8 @@ impl Parser for CodexParser {
 						out.push(Ev::Reasoning(text));
 					}
 				}
-				"mcp_tool_call" if s(item, "/server") == SERVER => {
-					if t == "item.started" {
-						out.push(Ev::OwnToolUse);
-					}
-				}
+				// Halo's own tools: only their start matters, and they must not reach the arm below.
+				"mcp_tool_call" if s(item, "/server") == SERVER => out.extend((t == "item.started").then_some(Ev::OwnToolUse)),
 				kind @ ("command_execution" | "mcp_tool_call" | "web_search" | "file_change") => {
 					let id = s(item, "/id").to_string();
 					if t == "item.started" {
