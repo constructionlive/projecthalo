@@ -1,5 +1,6 @@
 # Every push and pull request: formatting, lints, the engine's tests, the UI's
-# types and build. macOS, where Halo runs today.
+# types and build. macOS, where Halo runs today (the speech engine's
+# ScreenCaptureKit glue needs a current SDK, so the newest runner).
 name: CI
 on:
   push:
@@ -7,7 +8,7 @@ on:
   pull_request:
 jobs:
   check:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -27,7 +28,12 @@ jobs:
         run: cd ui && npx tsc --noEmit -p . && npx vite build
       - name: Format
         run: cargo fmt --all --check
+      # Failures are repeated as annotations, so they show on the pull request.
       - name: Lints
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: |
+          cargo clippy --workspace --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.log; status=${PIPESTATUS[0]}
+          [ "$status" = 0 ] || { grep -E "(error|warning)(\[|:)" clippy.log | head -20 | sed 's/^/::error::/'; exit 1; }
       - name: Engine tests
-        run: cargo test -p halo-core -p cc-agent
+        run: |
+          cargo test -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
+          [ "$status" = 0 ] || { grep -E "panicked|FAILED|error(\[|:)" test.log | head -20 | sed 's/^/::error::/'; exit 1; }
