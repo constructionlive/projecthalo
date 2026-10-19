@@ -200,7 +200,8 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<String>) {
 		if p.is_dir() {
 			collect(root, &p, out);
 		} else if let Ok(rel) = p.strip_prefix(root) {
-			out.push(rel.to_string_lossy().into_owned());
+			// Always "notes/a.md", on Windows too: the name the model sees and passes back.
+			out.push(rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"));
 		}
 	}
 }

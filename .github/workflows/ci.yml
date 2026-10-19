@@ -36,7 +36,7 @@ jobs:
           [ "$status" = 0 ] || { grep -E "(error|warning)(\[|:)" clippy.log | head -20 | sed 's/^/::error::/'; exit 1; }
       - name: Engine tests
         run: |
-          cargo test -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
+          cargo test --no-fail-fast -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
           [ "$status" = 0 ] || { echo "::error::$( (grep -E -A3 "panicked|FAILED|error(\[|:)" test.log || tail -40 test.log) | head -60 | tr -d '\r' | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"; exit 1; }
 
   windows:
@@ -78,5 +78,5 @@ jobs:
       - name: Engine tests
         run: |
           set +eo pipefail
-          cargo test -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
+          cargo test --no-fail-fast -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
           [ "$status" = 0 ] || { echo "::error::$( (grep -E -A3 "panicked|FAILED|error(\[|:)" test.log || tail -40 test.log) | head -60 | tr -d '\r' | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"; exit 1; }
