@@ -1,12 +1,14 @@
 //! A lone tap of one ⌘ key summons Halo: right ⌘ by default (left ⌘ is a
-//! setting). Pressed and released within a moment with no other key or click
-//! in between, so ⌘C, ⌘-click and a held ⌘ never trigger it.
+//! setting); on Windows, Ctrl (the Windows key belongs to Start). Pressed and
+//! released within a moment with no other key or click in between, so ⌘C,
+//! ⌘-click and a held ⌘ never trigger it.
 //!
 //! macOS only shows key presses to apps allowed under Accessibility (as
 //! LiveType asks) or Input Monitoring. The
 //! watcher waits for that permission and starts the moment it is given (no
 //! restart), and switches itself back on if macOS ever pauses it. ⌘⇧Space
-//! works without the permission.
+//! (Ctrl+Alt+Space on Windows) works without the permission. Windows needs
+//! none: a low-level keyboard hook sees every key.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -23,6 +25,7 @@ pub enum SummonKey {
 
 impl SummonKey {
 	/// macOS virtual key code.
+	#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 	pub fn keycode(self) -> i64 {
 		match self {
 			SummonKey::RightCommand => 54,
@@ -30,13 +33,27 @@ impl SummonKey {
 		}
 	}
 
-	pub fn label(self) -> &'static str {
+	/// Windows virtual key code (VK_RCONTROL, VK_LCONTROL).
+	#[cfg_attr(not(windows), allow(dead_code))]
+	pub fn vk(self) -> u32 {
 		match self {
-			SummonKey::RightCommand => "right ⌘",
-			SummonKey::LeftCommand => "left ⌘",
+			SummonKey::RightCommand => 0xA3,
+			SummonKey::LeftCommand => 0xA2,
+		}
+	}
+
+	pub fn label(self) -> &'static str {
+		match (self, cfg!(windows)) {
+			(SummonKey::RightCommand, false) => "right ⌘",
+			(SummonKey::LeftCommand, false) => "left ⌘",
+			(SummonKey::RightCommand, true) => "right Ctrl",
+			(SummonKey::LeftCommand, true) => "left Ctrl",
 		}
 	}
 }
+
+/// The shortcut that summons without the key watcher.
+pub const FALLBACK_LABEL: &str = if cfg!(windows) { "Ctrl+Alt+Space" } else { "⌘⇧Space" };
 
 /// What the key watcher sees, reduced to what matters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,11 +167,73 @@ pub fn request_input_monitoring() {
 
 /// Opens System Settings at Privacy & Security → Accessibility.
 pub fn open_input_monitoring_settings() {
+	#[cfg(target_os = "macos")]
 	let _ = std::process::Command::new("open").arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility").spawn();
 }
 
 /// What a held summon key does: starts on hold, ends on release.
 pub type Hook = std::sync::Arc<dyn Fn() + Send + Sync>;
+
+/// Taps and holds, from the key events either platform's watcher sees.
+struct Taps {
+	detector: TapDetector,
+	/// (press number, still clean, holding): shared with the hold timer.
+	hold: std::sync::Arc<std::sync::Mutex<(u64, bool, bool)>>,
+	on_tap: Hook,
+	on_hold: Hook,
+	on_release: Hook,
+}
+
+impl Taps {
+	fn new(on_tap: Hook, on_hold: Hook, on_release: Hook) -> Self {
+		Self { detector: TapDetector::default(), hold: Default::default(), on_tap, on_hold, on_release }
+	}
+
+	fn feed(&mut self, ev: KeyEvent) {
+		let holding = self.hold.lock().map(|h| h.2).unwrap_or(false);
+		match ev {
+			KeyEvent::Down { others } => {
+				if let Ok(mut h) = self.hold.lock() {
+					*h = (h.0 + 1, !others, false);
+					let (n, shared, on_hold) = (h.0, self.hold.clone(), self.on_hold.clone());
+					std::thread::spawn(move || {
+						std::thread::sleep(TAP_WINDOW);
+						let start = shared.lock().map(|mut h| {
+							let go = h.0 == n && h.1 && !h.2;
+							if go {
+								h.2 = true;
+							}
+							go
+						});
+						if start.unwrap_or(false) {
+							on_hold();
+						}
+					});
+				}
+			}
+			KeyEvent::Up => {
+				if let Ok(mut h) = self.hold.lock() {
+					h.1 = false;
+					h.2 = false;
+				}
+				if holding {
+					self.detector.feed(KeyEvent::Other, Instant::now());
+					(self.on_release)();
+					return;
+				}
+			}
+			KeyEvent::Other if !holding => {
+				if let Ok(mut h) = self.hold.lock() {
+					h.1 = false;
+				}
+			}
+			KeyEvent::Other => return,
+		}
+		if self.detector.feed(ev, Instant::now()) {
+			(self.on_tap)();
+		}
+	}
+}
 
 /// Calls `on_tap` on each lone tap of the summon key ([`set_key`]); holding it
 /// past the tap window calls `on_hold` once, and letting go then calls
@@ -180,9 +259,7 @@ pub fn watch(on_tap: Hook, on_hold: Hook, on_release: Hook) {
 			}
 		}
 		let port = AtomicUsize::new(0);
-		let detector = RefCell::new(TapDetector::default());
-		// (press number, still clean, holding): shared with the hold timer.
-		let hold = std::sync::Arc::new(std::sync::Mutex::new((0u64, false, false)));
+		let taps = RefCell::new(Taps::new(on_tap, on_hold, on_release));
 		let interests = vec![CGEventType::FlagsChanged, CGEventType::KeyDown, CGEventType::LeftMouseDown, CGEventType::RightMouseDown, CGEventType::OtherMouseDown, CGEventType::ScrollWheel];
 		let tap = CGEventTap::new(CGEventTapLocation::Session, CGEventTapPlacement::TailAppendEventTap, CGEventTapOptions::ListenOnly, interests, |_proxy, kind, event| {
 			let ev = match kind {
@@ -207,48 +284,7 @@ pub fn watch(on_tap: Hook, on_hold: Hook, on_release: Hook) {
 				}
 				_ => KeyEvent::Other,
 			};
-			let holding = hold.lock().map(|h| h.2).unwrap_or(false);
-			match ev {
-				KeyEvent::Down { others } => {
-					if let Ok(mut h) = hold.lock() {
-						*h = (h.0 + 1, !others, false);
-						let (n, shared, on_hold) = (h.0, hold.clone(), on_hold.clone());
-						std::thread::spawn(move || {
-							std::thread::sleep(TAP_WINDOW);
-							let start = shared.lock().map(|mut h| {
-								let go = h.0 == n && h.1 && !h.2;
-								if go {
-									h.2 = true;
-								}
-								go
-							});
-							if start.unwrap_or(false) {
-								on_hold();
-							}
-						});
-					}
-				}
-				KeyEvent::Up => {
-					if let Ok(mut h) = hold.lock() {
-						h.1 = false;
-						h.2 = false;
-					}
-					if holding {
-						detector.borrow_mut().feed(KeyEvent::Other, Instant::now());
-						on_release();
-						return None;
-					}
-				}
-				KeyEvent::Other if !holding => {
-					if let Ok(mut h) = hold.lock() {
-						h.1 = false;
-					}
-				}
-				KeyEvent::Other => return None,
-			}
-			if detector.borrow_mut().feed(ev, Instant::now()) {
-				on_tap();
-			}
+			taps.borrow_mut().feed(ev);
 			None
 		});
 		match tap {
@@ -271,7 +307,93 @@ pub fn watch(on_tap: Hook, on_hold: Hook, on_release: Hook) {
 	});
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows: low-level keyboard and mouse hooks, on a thread of their own that
+/// pumps messages (Windows calls a hook on the thread that set it).
+#[cfg(windows)]
+pub fn watch(on_tap: Hook, on_hold: Hook, on_release: Hook) {
+	use std::cell::RefCell;
+
+	use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+	use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LCONTROL, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RWIN, VK_SHIFT};
+	use windows_sys::Win32::UI::WindowsAndMessaging::{
+		CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEWHEEL,
+		WM_RBUTTONDOWN, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+	};
+
+	thread_local! {
+		static TAPS: RefCell<Option<Taps>> = const { RefCell::new(None) };
+		/// The summon key is down (Windows repeats key-downs while it's held).
+		static DOWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+	}
+	fn feed(ev: KeyEvent) {
+		TAPS.with(|t| {
+			if let Some(t) = t.borrow_mut().as_mut() {
+				t.feed(ev);
+			}
+		});
+	}
+	fn held(vk: u16) -> bool {
+		// SAFETY: a plain query.
+		unsafe { GetAsyncKeyState(vk as i32) as u16 & 0x8000 != 0 }
+	}
+	unsafe extern "system" fn keyboard(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+		if code >= 0 {
+			// SAFETY: for WH_KEYBOARD_LL, l points at a KBDLLHOOKSTRUCT.
+			let k = unsafe { &*(l as *const KBDLLHOOKSTRUCT) };
+			let msg = w as u32;
+			let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+			let up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+			if k.flags & LLKHF_INJECTED == 0 {
+				if k.vkCode == key().vk() {
+					if down && !DOWN.replace(true) {
+						let other_ctrl = if key() == SummonKey::RightCommand { VK_LCONTROL } else { VK_RCONTROL };
+						feed(KeyEvent::Down { others: [VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN, other_ctrl].into_iter().any(held) });
+					} else if up {
+						DOWN.set(false);
+						feed(KeyEvent::Up);
+					}
+				} else if down {
+					feed(KeyEvent::Other);
+				}
+			}
+		}
+		// SAFETY: passing the event on, as every hook must.
+		unsafe { CallNextHookEx(std::ptr::null_mut(), code, w, l) }
+	}
+	unsafe extern "system" fn mouse(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+		if code >= 0 && [WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN, WM_MOUSEWHEEL, WM_MOUSEHWHEEL].contains(&(w as u32)) {
+			feed(KeyEvent::Other);
+		}
+		// SAFETY: as above.
+		unsafe { CallNextHookEx(std::ptr::null_mut(), code, w, l) }
+	}
+
+	let _ = std::thread::Builder::new().name("halo-hotkey".into()).spawn(move || {
+		TAPS.with(|t| *t.borrow_mut() = Some(Taps::new(on_tap, on_hold, on_release)));
+		// SAFETY: hooks on this thread, which pumps messages for as long as Halo runs.
+		unsafe {
+			let kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard), std::ptr::null_mut(), 0);
+			let ms = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse), std::ptr::null_mut(), 0);
+			if kb.is_null() {
+				log::warn!("{}: Windows refused the key watcher", key().label());
+				return;
+			}
+			if ms.is_null() {
+				log::warn!("{}: no mouse watcher (a Ctrl-click may summon)", key().label());
+			}
+			LISTENING.store(true, Ordering::Relaxed);
+			log::info!("{} watcher on", key().label());
+			let mut msg: MSG = std::mem::zeroed();
+			while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
+				TranslateMessage(&msg);
+				DispatchMessageW(&msg);
+			}
+			LISTENING.store(false, Ordering::Relaxed);
+		}
+	});
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn watch(_on_tap: Hook, _on_hold: Hook, _on_release: Hook) {}
 
 #[cfg(test)]

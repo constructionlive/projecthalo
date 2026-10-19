@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { api } from '../lib/api';
 import { ENGINE_NAME, type Engine, type ModelChoice } from '../lib/types';
+import { chord, shortcut } from '../lib/keys';
 
 /** The words, so a theme can say it its own way. */
 export interface LightWords {
@@ -110,7 +111,7 @@ export function LightStar({ engine, onDone, words = STAR_WORDS, where, kinds }: 
       onSubmit={(e) => (e.preventDefault(), launch())}
       onKeyDown={(e) => {
         if (e.key === 'Escape') onDone();
-        if (e.key === 'Enter' && e.metaKey) launch();
+        if (chord(e.nativeEvent)?.key === 'enter') launch();
       }}
     >
       <div className="ls-head">
@@ -171,7 +172,7 @@ export function LightStar({ engine, onDone, words = STAR_WORDS, where, kinds }: 
         <label className="sr" htmlFor="ls-title">Name (optional)</label>
         <input id="ls-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Name (optional)" />
         <button type="submit" className="btn solid ls-go" disabled={!goal.trim() || busy}>
-          {busy ? 'Launching…' : words.go} <span className="ls-key">⌘Return</span>
+          {busy ? 'Launching…' : words.go} <span className="ls-key">{shortcut('⌘Return')}</span>
         </button>
       </div>
       {error && <span className="ls-error" role="alert">{error}</span>}

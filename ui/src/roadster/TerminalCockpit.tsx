@@ -1,6 +1,6 @@
 // Onboard a terminal car: the red GT's cockpit, and on its dash the real
 // shell. Every key goes to the shell (Esc too, so vim and less work); the
-// app's own keys are ⌘-chords: ⌘Return back, ⌘[ ⌘] the other cars, ⌘T a new
+// app's own keys are ⌘-chords (Ctrl+Shift on Windows): ⌘Return back, ⌘[ ⌘] the other cars, ⌘T a new
 // one, ⌘W close it, ⌘K clear, ⌘⇧H ask Halo about what's on screen.
 
 import '@xterm/xterm/css/xterm.css';
@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, inApp } from '../lib/api';
 import type { Terminal } from '../lib/types';
 import cockpit from './plates/cockpit-gt.jpg';
+import { chord, isMac, shortcut } from '../lib/keys';
 
 /** The night palette: amber cursor, the season's blue and orange. */
 const THEME = {
@@ -40,17 +41,18 @@ const THEME = {
   brightWhite: '#ffffff',
 };
 
-/** ⌘-chords the cockpit keeps; everything else is the shell's. */
-function cockpitChord(e: KeyboardEvent): boolean {
-  if (!e.metaKey || e.ctrlKey || e.altKey) return false;
-  const k = e.key.toLowerCase();
-  return k === 'enter' || k === '[' || k === ']' || k === 'k' || k === 't' || k === 'w' || (e.shiftKey && k === 'h');
+/** ⌘-chords the cockpit keeps (Ctrl+Shift on Windows); everything else is the shell's. */
+function cockpitChord(e: KeyboardEvent): string | null {
+  const c = chord(e);
+  if (!c) return null;
+  const k = c.key;
+  // ⌘⇧H; on Windows the Shift is already the terminal's chord.
+  return k === 'enter' || k === '[' || k === ']' || k === 'k' || k === 't' || k === 'w' || (k === 'h' && (c.shift || !isMac)) ? k : null;
 }
 
 /** ⌘-chords the window's own handlers take (season, arenas, launch): the shell mustn't get them either. */
 function windowChord(e: KeyboardEvent): boolean {
-  if (!e.metaKey || e.ctrlKey || e.altKey) return false;
-  const k = e.key.toLowerCase();
+  const k = chord(e)?.key ?? '';
   return /^[0-9]$/.test(k) || k === 'l' || k === 'n';
 }
 
@@ -241,10 +243,10 @@ export function TerminalCockpit({ terminals, id, num, arena, branch, onSelect, o
         e.preventDefault();
         return; // on to the window's own handlers
       }
-      if (!cockpitChord(e)) return;
+      const k = cockpitChord(e);
+      if (!k) return;
       e.preventDefault();
       e.stopPropagation();
-      const k = e.key.toLowerCase();
       if (k === 'enter') onBack();
       else if (k === '[') step(-1);
       else if (k === ']') step(1);
@@ -266,9 +268,9 @@ export function TerminalCockpit({ terminals, id, num, arena, branch, onSelect, o
       <div className="cockpit-view" style={{ backgroundImage: `url(${cockpit})` }} aria-hidden />
       <div className="cockpit-shade" aria-hidden />
 
-      <header className="cockpit-top" data-tauri-drag-region style={{ paddingTop: inApp ? 30 : 22 }}>
-        <div className="cockpit-id" data-tauri-drag-region style={{ paddingLeft: inApp ? 64 : 0 }}>
-          <button className="crumb mono cockpit-back" onClick={onBack}>← {arena} <span className="sep">⌘Return</span></button>
+      <header className="cockpit-top" data-tauri-drag-region style={{ paddingTop: inApp && isMac ? 30 : 22 }}>
+        <div className="cockpit-id" data-tauri-drag-region style={{ paddingLeft: inApp && isMac ? 64 : 0 }}>
+          <button className="crumb mono cockpit-back" onClick={onBack}>← {arena} <span className="sep">{shortcut('⌘Return', true)}</span></button>
           <span className="display cockpit-name">{num.get(t.id)} · {t.shell}</span>
           <span className="mono cockpit-where" title={t.cwd}>
             {t.cwd.replace(/^\/Users\/[^/]+/, '~')}
@@ -297,19 +299,19 @@ export function TerminalCockpit({ terminals, id, num, arena, branch, onSelect, o
                     <span key={p} className="mono cockpit-port">:{p}</span>
                   ))}
                 </button>
-                <button className="cockpit-tab-close" onClick={() => askClose(x.id)} aria-label={`Close ${num.get(x.id)} (⌘W)`} title="Close (⌘W)">
+                <button className="cockpit-tab-close" onClick={() => askClose(x.id)} aria-label={`Close ${num.get(x.id)} (${shortcut('⌘W', true)})`} title={`Close (${shortcut('⌘W', true)})`}>
                   <svg aria-hidden width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.4"><path d="M2 2l6 6M8 2l-6 6" /></svg>
                 </button>
               </div>
             );
           })}
-          <button className="cockpit-tab add" onClick={onNew} aria-label="New terminal car (⌘T)">+</button>
+          <button className="cockpit-tab add" onClick={onNew} aria-label={`New terminal car (${shortcut('⌘T', true)})`}>+</button>
           <span className="cockpit-tabs-fill" />
           {t.ports.map((p) => (
             <a key={p} className="btn quiet cockpit-open" href={`http://localhost:${p}`} target="_blank" rel="noreferrer">Open :{p} ↗</a>
           ))}
           {failed && (
-            <button className="btn cockpit-ask" onClick={() => onAsk(t)}>Ask Halo why it failed <span className="mono">⌘⇧H</span></button>
+            <button className="btn cockpit-ask" onClick={() => onAsk(t)}>Ask Halo why it failed <span className="mono">{shortcut('⌘⇧H', true)}</span></button>
           )}
         </div>
         {closing && (() => {
@@ -319,7 +321,7 @@ export function TerminalCockpit({ terminals, id, num, arena, branch, onSelect, o
               <span>
                 {num.get(closing)} is still running <code>{x?.command ?? 'something'}</code>. Close it and stop that?
               </span>
-              <button className="btn signal" onClick={() => close(closing)}>Close {num.get(closing)} <span className="mono">⌘W</span></button>
+              <button className="btn signal" onClick={() => close(closing)}>Close {num.get(closing)} <span className="mono">{shortcut('⌘W', true)}</span></button>
               <button className="btn quiet" onClick={() => setClosing(null)}>Keep it</button>
             </div>
           );
@@ -329,19 +331,19 @@ export function TerminalCockpit({ terminals, id, num, arena, branch, onSelect, o
         {t.status === 'exited' && (
           <div className="cockpit-ended">
             <span>The shell ended{t.exit !== null ? ` (exit ${t.exit})` : ''}.</span>
-            <button className="btn solid" onClick={onNew}>New terminal car <span className="mono">⌘T</span></button>
-            <button className="btn" onClick={() => close(t.id)}>Close it <span className="mono">⌘W</span></button>
+            <button className="btn solid" onClick={onNew}>New terminal car <span className="mono">{shortcut('⌘T', true)}</span></button>
+            <button className="btn" onClick={() => close(t.id)}>Close it <span className="mono">{shortcut('⌘W', true)}</span></button>
           </div>
         )}
       </div>
 
       <footer className="cockpit-keys mono" aria-hidden>
-        <span>⌘Return back to the arena</span>
-        <span>⌘[ ⌘] other cars</span>
-        <span>⌘T new car</span>
-        <span>⌘W close car</span>
-        <span>⌘K clear</span>
-        <span>⌘⇧H ask Halo</span>
+        <span>{shortcut('⌘Return', true)} back to the arena</span>
+        <span>{shortcut('⌘[ ⌘]', true)} other cars</span>
+        <span>{shortcut('⌘T', true)} new car</span>
+        <span>{shortcut('⌘W', true)} close car</span>
+        <span>{shortcut('⌘K', true)} clear</span>
+        <span>{shortcut('⌘⇧H', true)} ask Halo</span>
       </footer>
     </section>
   );

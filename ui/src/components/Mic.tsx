@@ -2,6 +2,7 @@
 // with your voice; dots while the words are worked out.
 
 import type { Voice } from '../lib/useVoice';
+import { SUMMON_KEY } from '../lib/keys';
 
 export function Mic({ voice }: { voice: Voice }) {
   const s = voice.status;
@@ -14,7 +15,7 @@ export function Mic({ voice }: { voice: Voice }) {
       : (s?.error ?? 'No speech model: open LiveType once to download one')
     : rec
       ? 'Stop and use what I said'
-      : 'Talk (or hold right ⌘ anywhere)';
+      : `Talk (or hold ${SUMMON_KEY} anywhere)`;
   return (
     <button type="button" className={`icon-btn mic${rec ? ' rec' : ''}${busy ? ' busy' : ''}`} onClick={voice.toggle} aria-label={label} title={label} disabled={off && !rec}>
       <span className="mic-ring" aria-hidden style={{ transform: `scale(${1 + voice.level * 0.9})` }} />

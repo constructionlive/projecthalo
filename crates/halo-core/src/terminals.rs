@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -144,8 +145,8 @@ impl Terminals {
 	/// Opens a shell in the workspace's folder (or the home folder).
 	pub fn open(&self, workspace: Option<&Workspace>, cols: u16, rows: u16) -> Result<TermSnapshot, String> {
 		let cwd = workspace.map(|w| w.path.clone()).or_else(dirs::home_dir).unwrap_or_else(|| PathBuf::from("/"));
-		let shell = self.inner.cfg.shell.clone().or_else(|| std::env::var_os("SHELL").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("/bin/zsh"));
-		let name = shell.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "sh".into());
+		let shell = self.inner.cfg.shell.clone().unwrap_or_else(default_shell);
+		let name = shell.file_stem().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_else(|| "sh".into());
 		let pair = native_pty_system().openpty(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| format!("couldn't open a terminal: {e}"))?;
 		let mut cmd = CommandBuilder::new(&shell);
 		cmd.cwd(&cwd);
@@ -167,6 +168,14 @@ impl Terminals {
 				cmd.env("HALO_LOAD_USER", if self.inner.cfg.user_config { "1" } else { "0" });
 				true
 			}
+			"pwsh" | "powershell" => {
+				if !self.inner.cfg.user_config {
+					cmd.arg("-NoProfile");
+				}
+				cmd.args(["-NoLogo".as_ref(), "-NoExit".as_ref(), "-ExecutionPolicy".as_ref(), "Bypass".as_ref(), "-File".as_ref(), self.inner.dir.join("pwsh/halo.ps1").as_os_str()]);
+				true
+			}
+			_ if cfg!(windows) => false,
 			_ => {
 				cmd.arg("-l");
 				false
@@ -255,10 +264,8 @@ impl Terminals {
 		if let Some(pid) = t.pid {
 			// Everything it started goes too: each job has its own process group,
 			// so a dev server would outlive a signal to the shell's alone.
-			let family: Vec<String> = process_tree().map(|tree| descendants(&tree, pid)).unwrap_or_default().into_iter().map(|p| p.to_string()).collect();
-			if !family.is_empty() {
-				let _ = Command::new("kill").arg("-HUP").args(&family).status();
-			}
+			let family = process_tree().map(|tree| descendants(&tree, pid)).unwrap_or_default();
+			end_processes(&family);
 		}
 		let _ = t.child.kill();
 		let _ = self.inner.events.send(HaloEvent::TerminalClosed { id: id.to_string() });
@@ -476,9 +483,12 @@ fn parse_mark(osc: &[u8]) -> Option<Mark> {
 		return Some(Mark::CommandLine(cmd.trim().to_string()));
 	}
 	if let Some(url) = s.strip_prefix("7;file://") {
-		// file://host/path: the path starts at the first slash after the host.
-		let path = url.find('/').map(|i| &url[i..]).unwrap_or("/");
-		return Some(Mark::Cwd(PathBuf::from(percent_decode(path))));
+		// file://host/path: the path starts at the first slash after the host
+		// (on Windows, /C:/Users/…: the drive comes first).
+		let path = percent_decode(url.find('/').map(|i| &url[i..]).unwrap_or("/"));
+		let b = path.as_bytes();
+		let path = if b.len() >= 3 && b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':' { path[1..].replace('/', "\\") } else { path };
+		return Some(Mark::Cwd(PathBuf::from(path)));
 	}
 	None
 }
@@ -587,7 +597,18 @@ pub fn plain_text(raw: &[u8]) -> String {
 	lines.iter().map(|l| l.iter().collect::<String>().trim_end().to_string()).collect::<Vec<_>>().join("\n")
 }
 
+/// The shell a new terminal runs: the person's own (`$SHELL`), or on Windows
+/// PowerShell (the newer one if it's installed).
+fn default_shell() -> PathBuf {
+	if cfg!(windows) {
+		let on_path = |exe: &str| std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(exe)).find(|f| f.is_file()));
+		return on_path("pwsh.exe").or_else(|| on_path("powershell.exe")).unwrap_or_else(|| PathBuf::from("powershell.exe"));
+	}
+	std::env::var_os("SHELL").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/bin/zsh"))
+}
+
 /// pid → parent pid, for every process.
+#[cfg(unix)]
 fn process_tree() -> Option<HashMap<u32, u32>> {
 	let out = Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output().ok()?;
 	Some(
@@ -599,6 +620,53 @@ fn process_tree() -> Option<HashMap<u32, u32>> {
 			})
 			.collect(),
 	)
+}
+
+#[cfg(windows)]
+fn process_tree() -> Option<HashMap<u32, u32>> {
+	use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+	use windows_sys::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS};
+	// SAFETY: a snapshot handle we close, and an entry sized as the API asks.
+	unsafe {
+		let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+		if snap == INVALID_HANDLE_VALUE {
+			return None;
+		}
+		let mut e: PROCESSENTRY32W = std::mem::zeroed();
+		e.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+		let mut tree = HashMap::new();
+		let mut more = Process32FirstW(snap, &mut e) != 0;
+		while more {
+			tree.insert(e.th32ProcessID, e.th32ParentProcessID);
+			more = Process32NextW(snap, &mut e) != 0;
+		}
+		CloseHandle(snap);
+		Some(tree)
+	}
+}
+
+/// Ends these processes: a hangup, as closing a terminal window sends.
+#[cfg(unix)]
+fn end_processes(pids: &HashSet<u32>) {
+	if !pids.is_empty() {
+		let _ = Command::new("kill").arg("-HUP").args(pids.iter().map(|p| p.to_string())).status();
+	}
+}
+
+#[cfg(windows)]
+fn end_processes(pids: &HashSet<u32>) {
+	use windows_sys::Win32::Foundation::CloseHandle;
+	use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+	for &pid in pids {
+		// SAFETY: a handle we close; a process that's gone gives none.
+		unsafe {
+			let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+			if !h.is_null() {
+				TerminateProcess(h, 1);
+				CloseHandle(h);
+			}
+		}
+	}
 }
 
 fn descendants(tree: &HashMap<u32, u32>, root: u32) -> HashSet<u32> {
@@ -617,6 +685,7 @@ fn descendants(tree: &HashMap<u32, u32>, root: u32) -> HashSet<u32> {
 }
 
 /// (pid, port) for every listening TCP socket.
+#[cfg(unix)]
 fn listening_ports() -> Option<Vec<(u32, u16)>> {
 	let out = Command::new("lsof").args(["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]).output().ok()?;
 	let mut v = Vec::new();
@@ -633,11 +702,44 @@ fn listening_ports() -> Option<Vec<(u32, u16)>> {
 	Some(v)
 }
 
+#[cfg(windows)]
+fn listening_ports() -> Option<Vec<(u32, u16)>> {
+	use windows_sys::Win32::NetworkManagement::IpHelper::{GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER};
+	use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
+	// The table for one address family, read into a buffer as big as it asks for.
+	fn table(family: u16) -> Option<Vec<u8>> {
+		let mut size = 0u32;
+		// SAFETY: the first call only reports the size; the second fills a buffer of it.
+		unsafe {
+			GetExtendedTcpTable(std::ptr::null_mut(), &mut size, 0, family as u32, TCP_TABLE_OWNER_PID_LISTENER, 0);
+			let mut buf = vec![0u8; size as usize + 1024];
+			size = buf.len() as u32;
+			(GetExtendedTcpTable(buf.as_mut_ptr().cast(), &mut size, 0, family as u32, TCP_TABLE_OWNER_PID_LISTENER, 0) == 0).then_some(buf)
+		}
+	}
+	// Each table: a row count (u32), then the rows.
+	fn rows<R: Copy>(buf: &[u8]) -> Vec<R> {
+		let n = u32::from_ne_bytes(buf[..4].try_into().unwrap()) as usize;
+		let at = std::mem::align_of::<R>().max(4);
+		// SAFETY: the API wrote n rows of R after the count, at R's alignment.
+		(0..n).map(|i| unsafe { std::ptr::read_unaligned(buf.as_ptr().add(at + i * std::mem::size_of::<R>()).cast::<R>()) }).collect()
+	}
+	let mut v = Vec::new();
+	let v4 = table(AF_INET)?;
+	v.extend(rows::<MIB_TCPROW_OWNER_PID>(&v4).into_iter().map(|r| (r.dwOwningPid, u16::from_be(r.dwLocalPort as u16))));
+	if let Some(v6) = table(AF_INET6) {
+		v.extend(rows::<MIB_TCP6ROW_OWNER_PID>(&v6).into_iter().map(|r| (r.dwOwningPid, u16::from_be(r.dwLocalPort as u16))));
+	}
+	Some(v)
+}
+
 /// The hooks, beside the person's own config: zsh loads ours from ZDOTDIR,
-/// which loads theirs, then adds the marks; bash takes ours as its rc file.
+/// which loads theirs, then adds the marks; bash takes ours as its rc file;
+/// PowerShell runs ours after the person's profile.
 fn write_integration(dir: &Path) -> std::io::Result<()> {
 	std::fs::create_dir_all(dir.join("zsh"))?;
 	std::fs::create_dir_all(dir.join("bash"))?;
+	std::fs::create_dir_all(dir.join("pwsh"))?;
 	std::fs::create_dir_all(dir.join("empty"))?;
 	// Each of zsh's startup files runs the person's own, with ZDOTDIR theirs while it does.
 	let pass = |file: &str| {
@@ -708,6 +810,47 @@ trap '__halo_preexec' DEBUG
 PROMPT_COMMAND="__halo_status=\$?; ${PROMPT_COMMAND:+$PROMPT_COMMAND; }__halo_precmd"
 "#,
 	)?;
+	// PowerShell has no hook before a command: the line editor (PSReadLine)
+	// hands back each line, and we mark it there, as VS Code does.
+	std::fs::write(
+		dir.join("pwsh/halo.ps1"),
+		r#"# Halo: mark prompts and commands so the app can see what this terminal is doing.
+if (-not $global:__HaloHooked) {
+  $global:__HaloHooked = $true
+  $global:__HaloPrompt = $function:prompt
+  $global:__HaloRan = $false
+  function global:prompt {
+    $ok = $?
+    $code = $global:LASTEXITCODE
+    $e = [char]27; $b = [char]7
+    $out = ''
+    if ($global:__HaloRan) {
+      $exit = if ($ok) { 0 } elseif ($code) { $code } else { 1 }
+      $out += "$e]133;D;$exit$b"
+    }
+    $global:__HaloRan = $false
+    if ($PWD.Provider.Name -eq 'FileSystem') {
+      $out += "$e]7;file://$env:COMPUTERNAME/$($PWD.ProviderPath -replace '\\','/')$b"
+    }
+    $out += "$e]133;A$b"
+    $global:LASTEXITCODE = $code
+    $out + (& $global:__HaloPrompt)
+  }
+  if (Get-Command PSConsoleHostReadLine -ErrorAction SilentlyContinue) {
+    $global:__HaloReadLine = $function:PSConsoleHostReadLine
+    function global:PSConsoleHostReadLine {
+      $line = & $global:__HaloReadLine
+      if ($line -and $line.Trim()) {
+        $global:__HaloRan = $true
+        $e = [char]27; $b = [char]7
+        [Console]::Write("$e]633;E;$($line -replace '[\x00-\x1f]', ' ')$b$e]133;C$b")
+      }
+      $line
+    }
+  }
+}
+"#,
+	)?;
 	Ok(())
 }
 
@@ -759,6 +902,8 @@ mod tests {
 			all.extend(s.feed(piece));
 		}
 		assert_eq!(all, vec![Mark::CommandLine("cargo test".into()), Mark::Started, Mark::Finished(101), Mark::Cwd(PathBuf::from("/Users/me/my code"))]);
+		// PowerShell on Windows: the drive comes first.
+		assert_eq!(s.feed(b"\x1b]7;file://PC/C:/Users/me/my%20code\x07"), vec![Mark::Cwd(PathBuf::from("C:\\Users\\me\\my code"))]);
 	}
 
 	#[test]
@@ -772,6 +917,7 @@ mod tests {
 		assert_eq!(plain_text(b"old\x1b[2J\x1b[Hnew"), "new");
 	}
 
+	#[cfg(unix)]
 	fn runs_commands_in(shell: &str) {
 		let (t, rx, dir) = terminals(shell);
 		let repo = dir.path().join("repo");
@@ -804,6 +950,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn replay_and_live_output_join_without_gaps_or_repeats() {
 		let (t, _rx, dir) = terminals("/bin/zsh");
 		type Chunks = Mutex<Vec<(u64, Vec<u8>)>>;
@@ -833,6 +980,7 @@ mod tests {
 	/// A keystroke's round trip (write → the shell's echo back through the
 	/// reader): what typing feels like. Prints the numbers.
 	#[test]
+	#[cfg(unix)]
 	fn keystrokes_echo_back_fast() {
 		let (t, _rx, dir) = terminals("/bin/zsh");
 		let (tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
@@ -861,16 +1009,19 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn zsh_reports_commands_exit_codes_and_cwd() {
 		runs_commands_in("/bin/zsh");
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn bash_reports_commands_exit_codes_and_cwd() {
 		runs_commands_in("/bin/bash");
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn a_server_it_starts_shows_its_port_and_dies_with_it() {
 		// A bare listener: http.server looks its host name up before it listens, which can hang on CI.
 		let serve = |port: u16| format!("python3 -c \"import socket,time; s=socket.socket(); s.bind(('127.0.0.1',{port})); s.listen(); print('listening'); time.sleep(600)\"\n");
@@ -899,6 +1050,7 @@ mod tests {
 	/// `cargo test -p halo-core hooks_survive -- --ignored`.
 	#[test]
 	#[ignore]
+	#[cfg(unix)]
 	fn hooks_survive_the_persons_own_zsh_config() {
 		let dir = tempfile::tempdir().unwrap();
 		let (tx, _rx) = unbounded();
@@ -913,6 +1065,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn halo_reads_typed_ahead_input_as_the_screen_shows_it() {
 		let (t, _rx, dir) = terminals("/bin/zsh");
 		let s = t.open(Some(&workspace(dir.path())), 100, 24).unwrap();
@@ -928,6 +1081,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(unix)]
 	fn exiting_the_shell_is_reported() {
 		let (t, _rx, dir) = terminals("/bin/zsh");
 		let s = t.open(Some(&workspace(dir.path())), 80, 24).unwrap();
@@ -935,5 +1089,36 @@ mod tests {
 		t.write(&s.id, b"exit 3\n").unwrap();
 		wait("the shell to end", 10, || t.get(&s.id).unwrap().status == TermStatus::Exited);
 		assert_eq!(t.get(&s.id).unwrap().exit, Some(3));
+	}
+
+	/// PowerShell, as a Windows terminal runs it: commands, exit codes, `cd`, and
+	/// a server's port, which closing the terminal stops.
+	#[test]
+	#[cfg(windows)]
+	fn powershell_reports_commands_exit_codes_cwd_and_ports() {
+		let (t, _rx, dir) = terminals(&default_shell().to_string_lossy());
+		let repo = dir.path().join("repo");
+		std::fs::create_dir_all(&repo).unwrap();
+		let s = t.open(Some(&workspace(&repo)), 120, 30).unwrap();
+		assert!(s.integrated, "{s:?}");
+		let id = s.id.clone();
+		wait_port(&t, &id, "the first prompt", 30, || t.read(&id, 5).is_some_and(|x| x.contains("PS ")));
+		t.write(&id, b"echo halo-says-hi\r").unwrap();
+		wait_port(&t, &id, "echo to finish", 20, || t.get(&id).unwrap().last.is_some());
+		let last = t.get(&id).unwrap().last.unwrap();
+		assert_eq!((last.command.as_str(), last.exit), ("echo halo-says-hi", 0));
+		t.write(&id, b"cmd /c exit 7\r").unwrap();
+		wait_port(&t, &id, "exit 7", 20, || t.get(&id).unwrap().runs == 2 && t.get(&id).unwrap().status == TermStatus::Idle);
+		assert_eq!(t.get(&id).unwrap().last.unwrap().exit, 7);
+		t.write(&id, b"mkdir sub | Out-Null; cd sub\r").unwrap();
+		wait_port(&t, &id, "the cwd to follow cd", 20, || t.get(&id).unwrap().cwd.ends_with("repo\\sub"));
+
+		let port = 47000 + (std::process::id() % 900) as u16;
+		let serve = format!("$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, {port}); $l.Start(); 'listening'; Start-Sleep 600\r");
+		t.write(&id, serve.as_bytes()).unwrap();
+		wait_port(&t, &id, "the port to show", 30, || t.get(&id).unwrap().ports.contains(&port));
+		assert_eq!(t.get(&id).unwrap().status, TermStatus::Running);
+		t.close(&id).unwrap();
+		wait("closing to stop its server", 10, || std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
 	}
 }

@@ -278,15 +278,16 @@ fn app_version(app: AppHandle) -> String {
 	app.package_info().version.to_string()
 }
 
-/// Where the theme kit is: beside the app in its bundle (Resources/kit), or
+/// Where the theme kit is: in the app's bundle (Resources/kit; beside halo.exe on Windows), or
 /// staged in the source tree for a debug build, or wherever HALO_KIT_DIR says.
 fn kit_dir() -> Option<PathBuf> {
-	let has = |p: &Path| p.join("bin/esbuild").is_file();
+	let has = |p: &Path| halo_core::themes::esbuild(p).is_file();
 	if let Some(p) = std::env::var_os("HALO_KIT_DIR").map(PathBuf::from).filter(|p| has(p)) {
 		return Some(p);
 	}
 	let exe = std::env::current_exe().ok()?;
-	let bundled = exe.parent()?.parent()?.join("Resources/kit");
+	// macOS: Halo.app/Contents/Resources/kit; Windows: beside halo.exe.
+	let bundled = if cfg!(target_os = "macos") { exe.parent()?.parent()?.join("Resources/kit") } else { exe.parent()?.join("kit") };
 	if has(&bundled) {
 		return Some(bundled);
 	}
@@ -591,11 +592,29 @@ fn open_star_file(state: tauri::State<AppState>, id: String, name: Option<String
 	if !path.exists() {
 		return Err(format!("{} isn't there any more", path.display()));
 	}
+	#[cfg(target_os = "macos")]
 	let mut cmd = std::process::Command::new("open");
+	#[cfg(target_os = "macos")]
 	if reveal {
 		cmd.arg("-R");
 	}
-	cmd.arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string())
+	#[cfg(target_os = "macos")]
+	cmd.arg(&path);
+	// Explorer: /select, shows it in its folder; a path alone opens it as a double-click would.
+	#[cfg(windows)]
+	let mut cmd = std::process::Command::new("explorer");
+	#[cfg(windows)]
+	if reveal {
+		use std::os::windows::process::CommandExt;
+		cmd.raw_arg(format!("/select,\"{}\"", path.display()));
+	} else {
+		cmd.arg(&path);
+	}
+	#[cfg(not(any(target_os = "macos", windows)))]
+	let mut cmd = std::process::Command::new("xdg-open");
+	#[cfg(not(any(target_os = "macos", windows)))]
+	cmd.arg(if reveal { path.parent().unwrap_or(&path) } else { &path });
+	cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Shows the Summon panel near the top of the screen the pointer is on, or hides it.
@@ -624,7 +643,9 @@ fn show_summon(app: &AppHandle) {
 
 fn init_logging() {
 	let mut builder = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
-	if let Some(dir) = dirs::home_dir().map(|h| h.join("Library/Logs/Halo"))
+	// ~/Library/Logs/Halo on macOS, %LOCALAPPDATA%\Halo\logs on Windows.
+	let dir = if cfg!(target_os = "macos") { dirs::home_dir().map(|h| h.join("Library/Logs/Halo")) } else { dirs::data_local_dir().map(|d| d.join("Halo/logs")) };
+	if let Some(dir) = dir
 		&& std::fs::create_dir_all(&dir).is_ok()
 		&& let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("halo.log"))
 	{
@@ -690,7 +711,8 @@ fn main() {
 
 	let _ = halo_cell.set(halo.clone());
 	let halo_for_setup = halo.clone();
-	let fallback = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
+	// ⌘⇧Space; on Windows Ctrl+Alt+Space (Win+Shift+Space switches the keyboard layout).
+	let fallback = if cfg!(windows) { Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space) } else { Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space) };
 	let app = tauri::Builder::default()
 		.plugin(tauri_plugin_notification::init())
 		.register_uri_scheme_protocol("halotheme", {

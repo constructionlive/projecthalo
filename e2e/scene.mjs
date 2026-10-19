@@ -2,12 +2,16 @@
 // WebKit (Halo's engine) against the built UI in demo mode. Reads every car's
 // pose from the scene (`?test` exposes it as window.pier).
 //   cd ui && npx vite build && npx vite preview --port 4173 &
-//   node e2e/scene.mjs            (SHOTS=1 to keep frames in e2e/shots)
+//   node e2e/scene.mjs            (SHOTS=1 to keep frames in e2e/shots;
+//                                  WIN=1 as Windows: Ctrl chords, Ctrl+Shift in a terminal)
 
 import { webkit } from './node_modules/playwright/index.mjs';
 
 const UI = 'http://localhost:4173/index.html?test';
 const SHOTS = process.env.SHOTS ? new URL('./shots/', import.meta.url).pathname : null;
+const WIN = !!process.env.WIN;
+/** A ⌘ chord as this run's platform presses it. */
+const chord = (k, terminal = false) => (WIN ? k.replace('Meta+', terminal ? 'Control+Shift+' : 'Control+') : k);
 const results = [];
 let page;
 const errors = [];
@@ -70,13 +74,14 @@ const frames = (ms) =>
 const header = () => page.textContent('.pier-top nav');
 const flagOf = () => page.textContent('.cockpit-flag');
 async function arena(key, name) {
-  await page.keyboard.press(key);
+  await page.keyboard.press(chord(key));
   await page.waitForFunction((n) => document.querySelector('.pier-top nav')?.textContent.includes(n), name, { timeout: 5000 });
   await wait(600);
 }
 
 const browser = await webkit.launch();
 page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+if (WIN) await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' }));
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(UI);
 await page.evaluate(() => {
@@ -143,7 +148,7 @@ await check('a command started in a terminal sends its GT racing; Ctrl-C parks i
   await wait(500);
   await page.keyboard.type('npm run dev');
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Meta+Enter');
+  await page.keyboard.press(chord('Meta+Enter', true));
   await page.waitForFunction(() => window.pier.debug('t3')?.phase === 'race', null, { timeout: 6000 });
   await wait(1200);
   assert((await dbg('t3')).speed > 20, 'racing at speed');
@@ -151,7 +156,7 @@ await check('a command started in a terminal sends its GT racing; Ctrl-C parks i
   await page.click('.tower-row.term:has-text("T3")');
   await wait(400);
   await page.keyboard.press('Control+c');
-  await page.keyboard.press('Meta+Enter');
+  await page.keyboard.press(chord('Meta+Enter', true));
   await page.waitForFunction(() => window.pier.debug('t3')?.state === 'landed', null, { timeout: 4000 });
   await page.waitForFunction(() => window.pier.debug('t3')?.speed < 2, null, { timeout: 12000 });
 });
@@ -161,7 +166,7 @@ await check('a failing command spins its GT off, then it parks retired', async (
   await wait(400);
   await page.keyboard.type('cargo test');
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Meta+Enter');
+  await page.keyboard.press(chord('Meta+Enter', true));
   await page.waitForFunction(() => window.pier.debug('t3')?.phase === 'race', null, { timeout: 4000 });
   await page.waitForFunction(() => window.pier.debug('t3')?.state === 'failed', null, { timeout: 6000 });
   const s = await sample(900);

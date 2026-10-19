@@ -34,6 +34,7 @@ import type { PierCommand } from './Roadster';
 import { TerminalCockpit, termFlag } from './TerminalCockpit';
 import { PaddockZone, PitZone, TrackMap, type Zone, parked, racing, waiting } from './Zones';
 import type { Terminal, Workspace } from '../lib/types';
+import { chord, isMac, shortcut, SUMMON_KEY } from '../lib/keys';
 
 /** How many finished cars stay parked on the course; the rest are in the paddock list. */
 const PARKED_ON_COURSE = 4;
@@ -342,7 +343,8 @@ export function Pier({ halo, voice, draft, setDraft, now, switcher, arena, away,
       if (raceCar) return;
       // Onboard a terminal car every key is the shell's, Esc too.
       if (e.key === 'Escape' && view.kind !== 'pier' && view.kind !== 'terminal' && !launching && !garage) home();
-      if (e.metaKey && !e.shiftKey && (e.key === 't' || e.key === 'T') && view.kind !== 'terminal' && !away) {
+      const c = chord(e);
+      if (c?.key === 't' && !c.shift && view.kind !== 'terminal' && !away) {
         e.preventDefault();
         newTerminal();
       }
@@ -458,9 +460,9 @@ export function Pier({ halo, voice, draft, setDraft, now, switcher, arena, away,
       {!webgl && <p className="pier-nogl">This Mac’s graphics can’t draw the pier. Switch back to Galaxy at the top.</p>}
       <div className="pier-vignette" aria-hidden />
 
-      <header data-tauri-drag-region className="pier-top" style={{ paddingTop: inApp ? 30 : 22 }}>
-        <nav aria-label="Where you are" data-tauri-drag-region style={{ display: 'flex', alignItems: 'baseline', gap: 16, paddingLeft: inApp ? 64 : 0, minWidth: 0 }}>
-          <button className="crumb mono season-crumb" onClick={onSeason} aria-label="The season: every workspace (⌘0)">← Season</button>
+      <header data-tauri-drag-region className="pier-top" style={{ paddingTop: inApp && isMac ? 30 : 22 }}>
+        <nav aria-label="Where you are" data-tauri-drag-region style={{ display: 'flex', alignItems: 'baseline', gap: 16, paddingLeft: inApp && isMac ? 64 : 0, minWidth: 0 }}>
+          <button className="crumb mono season-crumb" onClick={onSeason} aria-label={`The season: every workspace (${shortcut('⌘0')})`}>← Season</button>
           <button className="crumb display" onClick={home} style={{ fontSize: 30, letterSpacing: '0.1em', lineHeight: 1, whiteSpace: 'nowrap' }} aria-label={`${arena.name}: the arena`}>{arena.name}</button>
           {view.kind === 'pier' ? (
             <span className="mono pier-place">
@@ -488,7 +490,7 @@ export function Pier({ halo, voice, draft, setDraft, now, switcher, arena, away,
           <button className="btn quiet customize-btn" onClick={openWorkshop}>Customize</button>
           <HotkeyChip />
           <button className="btn quiet" onClick={() => setGarage(true)} aria-label={`Garage: ${ENGINE_NAME[engine ?? state.engine]}`}>Garage <span className="mono" style={{ fontSize: 9, color: 'var(--faint)' }}>{ENGINE_NAME[engine ?? state.engine]}</span></button>
-          <button className="btn quiet-line" onClick={newTerminal} aria-label="New terminal car (⌘T)">+ Terminal</button>
+          <button className="btn quiet-line" onClick={newTerminal} aria-label={`New terminal car (${shortcut('⌘T')})`}>+ Terminal</button>
           <button className="btn" onClick={() => (home(), setLaunching(true))}>+ Launch</button>
         </div>
       </header>
@@ -567,9 +569,9 @@ export function Pier({ halo, voice, draft, setDraft, now, switcher, arena, away,
               )}
               <div className="tower-sub mono">
                 <span>Terminals</span>
-                <button className="tower-add" onClick={newTerminal} aria-label="New terminal car (⌘T)">+ ⌘T</button>
+                <button className="tower-add" onClick={newTerminal} aria-label={`New terminal car (${shortcut('⌘T')})`}>+ {shortcut('⌘T')}</button>
               </div>
-              {terms.length === 0 && <p className="tower-empty">No terminals. ⌘T opens one in {arena.workspace?.name ?? 'your home folder'}.</p>}
+              {terms.length === 0 && <p className="tower-empty">No terminals. {shortcut('⌘T')} opens one in {arena.workspace?.name ?? 'your home folder'}.</p>}
               {terms.map((t) => {
                 const f = termFlag(t);
                 return (
@@ -730,7 +732,7 @@ export function Pier({ halo, voice, draft, setDraft, now, switcher, arena, away,
             autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={hearing ? 'On air… let go to send' : car ? `Radio ${car.title}…` : `Radio ${NAME}… (hold right ⌘ to talk)`}
+            placeholder={hearing ? 'On air… let go to send' : car ? `Radio ${car.title}…` : `Radio ${NAME}… (hold ${SUMMON_KEY} to talk)`}
             autoComplete="off"
           />
           {state.busy && !car && <button type="button" className="btn quiet" onClick={() => api.cancel()}>Stop</button>}

@@ -40,26 +40,34 @@ open a real terminal, without ever waiting on one.
 
 ## Status
 
-macOS 13+ (Apple silicon or Intel). Windows is in progress.
+macOS 13+ (Apple silicon or Intel), and Windows 10/11 (x64), new and still
+being tried out: every change builds a Windows installer in CI (the run's
+`halo-windows-installer` artifact). On Windows the summon key is right Ctrl
+(Ctrl+Alt+Space always works), shortcuts are Ctrl where macOS has ⌘ (Ctrl+Shift
+inside a terminal, where Ctrl belongs to the shell), and terminals run
+PowerShell.
 
 ## Build from source
 
-You need macOS, [Rust](https://rustup.rs) 1.88+, Node 22, the Tauri CLI
+You need macOS or Windows, [Rust](https://rustup.rs) 1.88+, Node 22, the Tauri CLI
 (`cargo install tauri-cli --version "^2"`), and at least one agent CLI signed
 in: [Claude Code](https://claude.com/claude-code), Codex or OpenCode.
+On Windows also Visual Studio's C++ build tools and CMake (the speech engine
+is C++); run the commands below in Git Bash.
 
 ```sh
 git clone https://github.com/constructionlive/projecthalo.git && cd projecthalo
 (cd ui && npm ci)
-scripts/stage-kit.sh                                  # the theme kit (esbuild, libraries)
+node scripts/stage-kit.mjs                            # the theme kit (esbuild, libraries)
 cd crates/halo-app && cargo tauri dev                 # run it, with live UI reload
 cd crates/halo-app && cargo tauri build --debug       # or an app: target/debug/bundle/macos/Halo.app
+                                                      # (on Windows an installer: target/debug/bundle/nsis/)
 ```
 
 The UI also runs in a plain browser as a scripted demo, for design work:
 `cd ui && npx vite` and open http://localhost:5173.
 
-**The summon key** (a tap of right ⌘; ⌘⇧Space always works) needs System
+**The summon key** on macOS (a tap of right ⌘; ⌘⇧Space always works) needs System
 Settings → Privacy & Security → Input Monitoring → Halo. macOS ties that
 permission to the app's signature, and an unsigned build gets a new one on
 every build; sign your builds with your own identity to keep it:

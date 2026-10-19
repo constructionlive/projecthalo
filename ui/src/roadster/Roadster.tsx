@@ -13,6 +13,7 @@ import type { Voice } from '../lib/useVoice';
 import { arenaOf, carsOf, loose } from './arenas';
 import { Pier } from './Pier';
 import { Season } from './Season';
+import { chord } from '../lib/keys';
 
 type Halo = ReturnType<typeof useHalo>;
 
@@ -98,20 +99,21 @@ export function Roadster({ halo, voice, draft, setDraft, now, switcher }: Props)
         setSeason(false);
         return;
       }
-      if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.key === '0') {
+      const c = chord(e);
+      if (!c || c.shift) return;
+      if (c.key === '0') {
         e.preventDefault();
         setSeason(true);
-      } else if (/^[1-9]$/.test(e.key)) {
-        const w = workspaces[Number(e.key) - 1];
+      } else if (/^[1-9]$/.test(c.key)) {
+        const w = workspaces[Number(c.key) - 1];
         if (w) {
           e.preventDefault();
           go(w.id);
         }
-      } else if (e.key === 'n' || e.key === 'N') {
+      } else if (c.key === 'n') {
         e.preventDefault();
         pick();
-      } else if ((e.key === 'l' || e.key === 'L') && !empty) {
+      } else if (c.key === 'l' && !empty) {
         e.preventDefault();
         ask('launch');
       }

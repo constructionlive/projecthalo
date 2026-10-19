@@ -2,6 +2,7 @@
 
 import { api } from '../lib/api';
 import { useHotkey } from '../lib/useHalo';
+import { isMac } from '../lib/keys';
 
 export function HotkeyChip() {
   const hk = useHotkey();
@@ -15,7 +16,7 @@ export function HotkeyChip() {
   }
   const other = hk.key === 'rightCommand' ? 'leftCommand' : 'rightCommand';
   return (
-    <button className="btn quiet" onClick={() => api.setSummonKey(other)} title={`Switch to ${other === 'leftCommand' ? 'left' : 'right'} ⌘`}>
+    <button className="btn quiet" onClick={() => api.setSummonKey(other)} title={`Switch to ${other === 'leftCommand' ? 'left' : 'right'} ${isMac ? '⌘' : 'Ctrl'}`}>
       Tap {hk.label} anywhere
     </button>
   );

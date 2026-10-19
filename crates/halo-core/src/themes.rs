@@ -11,11 +11,10 @@
 //! ```
 //!
 //! The kit (`<kit>`): `ui/src` (Halo's UI, with the sandbox's lib/api), the
-//! libraries in `node_modules`, `bin/esbuild` and `KIT.md`.
+//! libraries in `node_modules`, `bin/esbuild` (`esbuild.exe` on Windows) and `KIT.md`.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -290,6 +289,11 @@ impl Themes {
 	}
 }
 
+/// The kit's compiler.
+pub fn esbuild(kit: &Path) -> PathBuf {
+	kit.join("bin").join(if cfg!(windows) { "esbuild.exe" } else { "esbuild" })
+}
+
 /// esbuild, from the kit, on a theme folder, into `out` (its `dist/` for the
 /// real thing). Errors come back as esbuild prints them (file, line, what's wrong).
 pub fn build_dir(kit: &Path, dir: &Path, out: &Path) -> Result<(), String> {
@@ -297,7 +301,7 @@ pub fn build_dir(kit: &Path, dir: &Path, out: &Path) -> Result<(), String> {
 	if !entry.is_file() {
 		return Err("src/index.tsx is missing: it's the theme's entry.".into());
 	}
-	let out = Command::new(kit.join("bin/esbuild"))
+	let out = crate::quiet_command(esbuild(kit))
 		.arg(kit.join("ui/src/kit/main.tsx"))
 		.args(["--bundle", "--format=esm", "--target=safari16", "--jsx=automatic", "--minify", "--log-level=error", "--color=false"])
 		.arg(format!("--outdir={}", out.display()))
@@ -459,10 +463,10 @@ mod tests {
 
 	use super::*;
 
-	/// The kit staged by scripts/stage-kit.sh (skips when it isn't there).
+	/// The kit staged by scripts/stage-kit.mjs (skips when it isn't there).
 	fn kit() -> Option<PathBuf> {
 		let k = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../halo-app/kit");
-		k.join("bin/esbuild").is_file().then_some(k)
+		esbuild(&k).is_file().then_some(k)
 	}
 
 	#[test]
@@ -494,7 +498,7 @@ mod tests {
 
 	#[test]
 	fn a_theme_is_made_built_broken_rebuilt_and_undone() {
-		let Some(kit) = kit() else { return eprintln!("no staged kit: run scripts/stage-kit.sh") };
+		let Some(kit) = kit() else { return eprintln!("no staged kit: run scripts/stage-kit.mjs") };
 		let d = tempfile::tempdir().unwrap();
 		let (tx, rx) = unbounded();
 		let t = Themes::new(d.path().to_path_buf(), Some(kit), tx);

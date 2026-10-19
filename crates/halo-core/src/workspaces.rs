@@ -3,7 +3,6 @@
 //! in the same checkout; Halo knows them all and which one is in front.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -175,7 +174,7 @@ impl Workspaces {
 pub fn info(workspace: Workspace) -> WorkspaceInfo {
 	let missing = !workspace.path.is_dir();
 	let git = |args: &[&str]| -> Option<String> {
-		let out = Command::new("git").arg("-C").arg(&workspace.path).args(args).output().ok()?;
+		let out = crate::quiet_command("git").arg("-C").arg(&workspace.path).args(args).output().ok()?;
 		out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 	};
 	let (branch, dirty) = if missing {

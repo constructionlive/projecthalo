@@ -92,6 +92,20 @@ pub fn now_ms() -> u64 {
 	cc_agent::now_ms()
 }
 
+/// A command to run in the background: on Windows, without a console window
+/// flashing up (Halo is a windowed app, so each would get one).
+pub fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+	#[allow(unused_mut)]
+	let mut cmd = std::process::Command::new(program);
+	#[cfg(windows)]
+	{
+		use std::os::windows::process::CommandExt;
+		const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+		cmd.creation_flags(CREATE_NO_WINDOW);
+	}
+	cmd
+}
+
 /// "Fri 2026-10-17" for the context line in front of each message.
 pub fn today() -> String {
 	let days = (now_ms() / 86_400_000) as i64;

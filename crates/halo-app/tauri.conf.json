@@ -11,7 +11,7 @@
       "cwd": "../../ui"
     },
     "beforeBuildCommand": {
-      "script": "npm run build && ../scripts/stage-kit.sh",
+      "script": "npm run build && node ../scripts/stage-kit.mjs",
       "cwd": "../../ui"
     }
   },

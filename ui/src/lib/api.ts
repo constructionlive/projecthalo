@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 import { demo } from './demo';
+import { SUMMON_KEY } from './keys';
 import type { Access, Engine, Garage, HaloEvent, HaloState, HotkeyStatus, ModelChoice, Star, StarFile, SummonKey, Terminal, ThemeInfo, UpdateInfo, Workspace } from './types';
 
 export const inApp = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -62,7 +63,7 @@ export const api = {
   cancel: () => pick<void>(() => invoke('cancel_halo'), '/cancel', {}, () => Promise.resolve()),
   hideSummon: () => pick<void>(() => invoke('hide_summon'), '/hide-summon', {}, () => Promise.resolve()),
   fitSummon: (height: number) => pick<void>(() => invoke('fit_summon', { height }), '/fit-summon', { height }, () => Promise.resolve()),
-  hotkey: () => pick<HotkeyStatus>(() => invoke('hotkey_status'), '/hotkey', undefined, async () => ({ key: 'rightCommand', label: 'right ⌘', allowed: true, listening: true })),
+  hotkey: () => pick<HotkeyStatus>(() => invoke('hotkey_status'), '/hotkey', undefined, async () => ({ key: 'rightCommand', label: SUMMON_KEY, allowed: true, listening: true })),
   allowHotkey: () => pick<void>(() => invoke('open_input_monitoring'), '/allow-hotkey', {}, () => Promise.resolve()),
   setSummonKey: (key: SummonKey) => pick<void>(() => invoke('set_summon_key', { key }), '/summon-key', { key }, () => Promise.resolve()),
   starFiles: (id: string) => pick<StarFile[]>(() => invoke('star_files', { id }), '/star-files', { id }, async () => (id === 's3' ? [{ name: 'replies.md', size: 4200, modified: Date.now() }] : [])),

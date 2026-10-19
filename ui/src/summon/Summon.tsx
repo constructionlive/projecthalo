@@ -1,4 +1,4 @@
-// The Summon panel: tap right ⌘ from any app. One line to ask (or hold right
+// The Summon panel: tap right ⌘ (right Ctrl on Windows) from any app. One line to ask (or hold right
 // ⌘ and say it), Halo's answer crawling in, and anything waiting on the person.
 
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import { colorOf, tagOf } from '../lib/stars';
 import type { Star } from '../lib/types';
 import { useHalo, useHotkey, useStillWhenAway } from '../lib/useHalo';
 import { useVoice } from '../lib/useVoice';
+import { chord, shortcut, SUMMON_KEY } from '../lib/keys';
 
 function Waiting({ star }: { star: Star }) {
   const [answer, setAnswer] = useState('');
@@ -83,7 +84,7 @@ export function Summon() {
     const off = api.on('summon-shown', focus);
     const keys = (e: KeyboardEvent) => {
       if (e.key === 'Escape') api.hideSummon();
-      if (e.key === 'Enter' && e.metaKey) api.openSky();
+      if (chord(e)?.key === 'enter') api.openSky();
     };
     window.addEventListener('keydown', keys);
     return () => {
@@ -139,7 +140,7 @@ export function Summon() {
           <div style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 18, borderBottom: '1px solid var(--line)' }} aria-live="polite">
             <span className="voice" style={{ fontSize: 24, color: 'var(--star)' }}>{voice.status?.transcribing ? 'Writing it down…' : 'Listening…'}</span>
             <Meter level={voice.level} />
-            <span className="mono" style={{ fontSize: 9, color: 'var(--faint)', marginLeft: 'auto' }}>{voice.holding ? `let go of ${hk?.label ?? 'right ⌘'} to ask` : 'tap the mic to stop'}</span>
+            <span className="mono" style={{ fontSize: 9, color: 'var(--faint)', marginLeft: 'auto' }}>{voice.holding ? `let go of ${hk?.label ?? SUMMON_KEY} to ask` : 'tap the mic to stop'}</span>
           </div>
         ) : (
           <form onSubmit={(e) => (e.preventDefault(), submit())} style={{ padding: '6px 22px 0' }}>
@@ -178,7 +179,7 @@ export function Summon() {
         <div className="mono" style={{ display: 'flex', gap: 20, padding: '10px 22px', borderTop: '1px solid var(--line)', fontSize: 8, color: 'var(--faint)', flex: '0 0 auto' }}>
           <span>↩ ask</span>
           <span>esc · dismiss</span>
-          <span>⌘↩ · open the sky</span>
+          <span>{shortcut('⌘↩')} · open the sky</span>
           <span>{hk ? `hold ${hk.label} · talk` : ''}</span>
           <button className="btn quiet" onClick={() => api.openSky()} style={{ marginLeft: 'auto', minHeight: 0, fontSize: 8 }}>Open Halo →</button>
         </div>

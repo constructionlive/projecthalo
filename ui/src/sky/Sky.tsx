@@ -28,6 +28,7 @@ import { ageOf, colorOf } from '../lib/stars';
 import { ENGINE_NAME, type Engine, type Star } from '../lib/types';
 import { ago } from '../lib/useHalo';
 import type { ThemeProps } from '../kit/theme';
+import { isMac } from '../lib/keys';
 
 type View = { kind: 'galaxy' } | { kind: 'thread' } | { kind: 'nebula' } | { kind: 'star'; id: string; from?: 'nebula' };
 
@@ -136,8 +137,8 @@ export function Sky({ halo, voice, draft, setDraft, now, switcher }: ThemeProps)
       <div className="starfield" aria-hidden style={{ position: 'absolute', inset: 0, opacity: 0.9, pointerEvents: 'none' }} />
       <div aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 260, pointerEvents: 'none', background: 'linear-gradient(to top, rgba(10,11,10,1) 0%, rgba(10,11,10,.9) 40%, rgba(46,66,104,.16) 92%, rgba(46,66,104,0) 100%)' }} />
 
-      <header data-tauri-drag-region style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: `${inApp ? 30 : 22}px clamp(16px, 3vw, 44px) 16px`, borderBottom: '1px solid var(--line)', zIndex: 4 }}>
-        <nav aria-label="Where you are" data-tauri-drag-region style={{ display: 'flex', alignItems: 'baseline', gap: 16, paddingLeft: inApp ? 64 : 0, minWidth: 0 }}>
+      <header data-tauri-drag-region style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: `${inApp && isMac ? 30 : 22}px clamp(16px, 3vw, 44px) 16px`, borderBottom: '1px solid var(--line)', zIndex: 4 }}>
+        <nav aria-label="Where you are" data-tauri-drag-region style={{ display: 'flex', alignItems: 'baseline', gap: 16, paddingLeft: inApp && isMac ? 64 : 0, minWidth: 0 }}>
           <button className="crumb display" onClick={home} style={{ fontSize: 30, letterSpacing: '0.16em', lineHeight: 1 }} aria-label="Galaxy">Halo</button>
           {view.kind !== 'galaxy' && (
             <span className="mono crumbs">

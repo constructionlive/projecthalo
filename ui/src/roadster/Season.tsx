@@ -8,6 +8,7 @@ import { api, inApp } from '../lib/api';
 import type { Star, Terminal, Workspace } from '../lib/types';
 import { clock } from '../lib/useHalo';
 import { ARENA, type ArenaStatus, FLAG_WORD, arenaOf, carsOf, loose, statusOf } from './arenas';
+import { isMac, shortcut } from '../lib/keys';
 
 interface Props {
   workspaces: Workspace[];
@@ -103,8 +104,8 @@ export function Season({ workspaces, stars, terminals, here, onGo, onRadio }: Pr
 
   return (
     <section className="season" aria-label="The season: every workspace">
-      <header className="season-top" data-tauri-drag-region style={{ paddingTop: inApp ? 34 : 26 }}>
-        <div className="season-title" data-tauri-drag-region style={{ paddingLeft: inApp ? 64 : 0 }}>
+      <header className="season-top" data-tauri-drag-region style={{ paddingTop: inApp && isMac ? 34 : 26 }}>
+        <div className="season-title" data-tauri-drag-region style={{ paddingLeft: inApp && isMac ? 64 : 0 }}>
           <span className="mono season-when">Halo · {now}</span>
           <h1 className="display">The season</h1>
           <span className="mono season-sum">
@@ -128,13 +129,13 @@ export function Season({ workspaces, stars, terminals, here, onGo, onRadio }: Pr
           <div className="season-empty-body">
             <h2 className="display">Open your first workspace</h2>
             <p>Pick a folder, usually a repository. It becomes an arena: agents you launch there work in that folder, and you can see them all from here.</p>
-            <button className="btn solid" onClick={open}>Open a folder <span className="mono key">⌘N</span></button>
+            <button className="btn solid" onClick={open}>Open a folder <span className="mono key">{shortcut('⌘N')}</span></button>
           </div>
         </div>
       ) : (
         <div className={`season-grid n${Math.min(rows.length + (strays.length ? 1 : 0), 5)}`}>
           {rows.map((r, i) => (
-            <Card key={r.w.id} w={r.w} cars={r.cars} terms={r.terms} status={r.status} keyHint={i < 9 ? `⌘${i + 1}` : ''} here={here === r.w.id} onGo={() => onGo(r.w.id)} />
+            <Card key={r.w.id} w={r.w} cars={r.cars} terms={r.terms} status={r.status} keyHint={i < 9 ? shortcut(`⌘${i + 1}`) : ''} here={here === r.w.id} onGo={() => onGo(r.w.id)} />
           ))}
           {strays.length > 0 && <Card w={null} cars={strays} terms={strayTerms} status={statusOf(strays)} keyHint="" here={here === null} onGo={() => onGo(null)} />}
         </div>
@@ -144,11 +145,11 @@ export function Season({ workspaces, stars, terminals, here, onGo, onRadio }: Pr
         {(rows.length > 0 || strays.length > 0) && (
           <button className="btn season-new" onClick={open}>
             <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14" /></svg>
-            New arena: open a folder <span className="mono key">⌘N</span>
+            New arena: open a folder <span className="mono key">{shortcut('⌘N')}</span>
           </button>
         )}
         {error && <span className="season-error" role="alert">{error}</span>}
-        <span className="mono season-keys">⌘1–9 arena · ⌘0 the season · ⌘L launch</span>
+        <span className="mono season-keys">{shortcut('⌘1–9 arena · ⌘0 the season · ⌘L launch')}</span>
       </footer>
     </section>
   );

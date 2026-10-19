@@ -61,7 +61,7 @@ impl Presence {
 	/// The summon key and its permission, as the menu shows them.
 	pub fn refresh_key(&self) {
 		let key = hotkey::key();
-		let _ = self.summon.set_text(format!("Summon · tap {}  (or ⌘⇧Space)", key.label()));
+		let _ = self.summon.set_text(format!("Summon · tap {}  (or {})", key.label(), hotkey::FALLBACK_LABEL));
 		let _ = self.right.set_checked(key == SummonKey::RightCommand);
 		let _ = self.left.set_checked(key == SummonKey::LeftCommand);
 		let ready = hotkey::listening();

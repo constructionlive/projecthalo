@@ -6,6 +6,7 @@ import bay from './plates/arena-bay.jpg';
 import glace from './plates/arena-glace.jpg';
 import mesa from './plates/arena-mesa.jpg';
 import porto from './plates/arena-porto.jpg';
+import { shortcut } from '../lib/keys';
 
 export const ARENA: Record<ArenaKey, { name: string; image: string; scene: string }> = {
   bay: { name: 'Bay Night', image: bay, scene: 'the circuit on the bay at night, the gantry and the bridge' },
@@ -70,7 +71,7 @@ export function statusOf(cars: Star[], now = Date.now()): ArenaStatus {
     return { ...base, flag: 'racing', line: `Lap ${Math.max(1, s.turns)} · ${s.title}: ${s.now}` };
   }
   const last = [...cars].sort((a, b) => b.updated - a.updated)[0];
-  return { ...base, flag: 'quiet', line: last ? `Quiet. Last in: ${last.title}` : 'No cars yet. Launch one with ⌘L.' };
+  return { ...base, flag: 'quiet', line: last ? `Quiet. Last in: ${last.title}` : `No cars yet. Launch one with ${shortcut('⌘L')}.` };
 }
 
 export const FLAG_WORD: Record<ArenaFlag, string> = { needs: 'Needs you', red: 'Red flag', racing: 'Racing', quiet: 'Quiet' };
