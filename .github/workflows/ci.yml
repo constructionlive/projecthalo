@@ -63,18 +63,20 @@ jobs:
         run: cd ui && npx vite build
       - name: Lints
         run: |
+          set +eo pipefail # (shell: bash stops at the first failure; the report below must still run)
           cargo clippy --workspace --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.log; status=${PIPESTATUS[0]}
           [ "$status" = 0 ] || { grep -E "(error|warning)(\[|:)" clippy.log | head -20 | sed 's/^/::error::/'; exit 1; }
       - name: Installer
         run: |
           cargo install tauri-cli --version "^2" --locked
           cd crates/halo-app && cargo tauri build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: halo-windows-installer
           path: target/release/bundle/nsis/*.exe
           if-no-files-found: error
       - name: Engine tests
         run: |
+          set +eo pipefail
           cargo test -p halo-core -p cc-agent 2>&1 | tee test.log; status=${PIPESTATUS[0]}
           [ "$status" = 0 ] || { echo "::error::$( (grep -E -A3 "panicked|FAILED|error(\[|:)" test.log || tail -40 test.log) | head -60 | tr -d '\r' | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"; exit 1; }

@@ -17,6 +17,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# This machine's signing setup and release secrets (both gitignored).
+set -a
+[ -f "$ROOT/.halo-dev.env" ] && . "$ROOT/.halo-dev.env"
+[ -f "$ROOT/.env" ] && . "$ROOT/.env"
+set +a
 CONF=crates/halo-app/tauri.conf.json
 VERSION="$(python3 -c "import json; print(json.load(open('$CONF'))['version'])")"
 ENDPOINT="${R2_ENDPOINT:-https://136b5efccdb1fd7296a5546ab0a6b41f.r2.cloudflarestorage.com}"
@@ -30,7 +35,6 @@ BUNDLE=target/release/bundle
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
 	echo "› building Halo $VERSION ($LABEL)"
-	[ -f "$ROOT/.halo-dev.env" ] && . "$ROOT/.halo-dev.env"
 	export APPLE_SIGNING_IDENTITY="${RELEASE_SIGNING_IDENTITY:?set RELEASE_SIGNING_IDENTITY (a Developer ID Application identity), e.g. in .halo-dev.env}"
 	export NOTARIZE="${NOTARIZE:-1}"
 	if [ "${NOTARIZE:-1}" = "1" ]; then
@@ -45,6 +49,13 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
 	export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 	(cd crates/halo-app && cargo tauri build --config '{"bundle":{"createUpdaterArtifacts":true,"targets":["app","dmg"]}}')
 	unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+	# Tauri notarizes the app; the disk image it comes in is downloaded too, so it's notarized as well.
+	if [ "${NOTARIZE:-1}" = "1" ]; then
+		for dmg in "$BUNDLE"/dmg/Halo_"$VERSION"_*.dmg; do
+			xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+			xcrun stapler staple "$dmg"
+		done
+	fi
 fi
 
 ARCHIVE="$BUNDLE/macos/Halo.app.tar.gz"

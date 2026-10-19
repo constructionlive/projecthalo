@@ -9,3 +9,4 @@ e2e/*.log
 .orkey
 crates/halo-app/kit/
 .halo-dev.env
+.env

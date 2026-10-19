@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "cc-agent"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "dirs 6.0.0",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "halo-app"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "cc-agent",
@@ -1832,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "halo-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "cc-agent",
  "crossbeam-channel",
@@ -5503,7 +5503,7 @@ dependencies = [
 
 [[package]]
 name = "voice-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "dirs 6.0.0",
