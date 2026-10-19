@@ -87,7 +87,8 @@ impl Toolbox {
 	fn resolve(&self, raw: &str) -> Result<PathBuf, String> {
 		let p = Path::new(raw.trim());
 		let rel = p.strip_prefix(&self.workspace).unwrap_or(p);
-		if rel.is_absolute() || rel.components().any(|c| matches!(c, Component::ParentDir)) {
+		// Not just is_absolute(): on Windows "/etc/x" isn't absolute (no drive), yet joined it lands at C:\etc\x.
+		if rel.is_absolute() || rel.components().any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_))) {
 			return Err(format!("{raw} is outside this chat's files; use a name from list_files"));
 		}
 		Ok(self.workspace.join(rel))
@@ -231,6 +232,8 @@ mod tests {
 		assert!(t.call("list_files", json!({})).unwrap().contains("notes/a.md"));
 		assert!(t.call("read_file", json!({ "path": "../secret" })).is_err());
 		assert!(t.call("write_file", json!({ "path": "/etc/x", "content": "" })).is_err());
+		assert!(t.call("write_file", json!({ "path": "\\\\server\\share\\x", "content": "" })).is_err() || !cfg!(windows));
+		assert!(t.call("write_file", json!({ "path": "C:x", "content": "" })).is_err() || !cfg!(windows));
 		// The chat folder's own absolute paths are fine.
 		let abs = t.workspace.join("notes/a.md");
 		assert!(t.call("read_file", json!({ "path": abs.to_string_lossy() })).is_ok());
